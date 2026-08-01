@@ -1,0 +1,26 @@
+#!/usr/bin/env bash
+set -Eeuo pipefail
+
+directory="$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")"
+real="$directory/llama-server.bin"
+flash="${LLAMA_SERVER_FLASH_ATTN:-off}"
+fit="${LLAMA_SERVER_FIT:-off}"
+args=()
+
+while (($#)); do
+  case "$1" in
+    --flash-attn|-fa)
+      shift
+      (($#)) && shift
+      [[ "$flash" == off ]] || args+=(--flash-attn "$flash")
+      ;;
+    --fit)
+      shift
+      (($#)) && shift
+      [[ "$fit" == keep ]] || args+=(--fit "$fit")
+      ;;
+    *) args+=("$1"); shift ;;
+  esac
+done
+
+exec "$real" "${args[@]}"

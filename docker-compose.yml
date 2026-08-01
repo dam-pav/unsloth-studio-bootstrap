@@ -1,0 +1,106 @@
+name: unsloth-studio-bootstrap
+
+services:
+  init:
+    image: alpine:3.20
+    restart: "no"
+    user: "0:0"
+    environment:
+      UNSLOTH_UID: ${UNSLOTH_UID:-1000}
+      UNSLOTH_GID: ${UNSLOTH_GID:-1000}
+    volumes:
+      - ${DATA_DIR:?DATA_DIR is required}/${UNSLOTH_WORK_PATH:-work}:/persist/work
+      - ${DATA_DIR:?DATA_DIR is required}/${UNSLOTH_CACHE_PATH:-cache}:/persist/cache
+      - ${DATA_DIR:?DATA_DIR is required}/${UNSLOTH_HOME_PATH:-home}:/persist/home
+      - ${DATA_DIR:?DATA_DIR is required}/${UNSLOTH_LLAMA_PATH:-llama}:/persist/llama
+    command: ["/bin/sh", "-ec", "mkdir -p /persist/work /persist/cache /persist/home /persist/llama; chown -R $${UNSLOTH_UID}:$${UNSLOTH_GID} /persist/work /persist/cache /persist/home /persist/llama; chmod -R u+rwX,g+rwX,o-rwx /persist/work /persist/cache /persist/home /persist/llama"]
+
+  llama-setup:
+    image: nvidia/cuda:12.4.1-devel-ubuntu22.04
+    restart: "no"
+    gpus: all
+    environment:
+      LLAMA_CPP_MODE: ${LLAMA_CPP_MODE:-bundled}
+      LLAMA_CPP_REPO: ${LLAMA_CPP_REPO:-https://github.com/unslothai/llama.cpp.git}
+      LLAMA_CPP_REF: ${LLAMA_CPP_REF:-b10079-mix-fb3d4ca}
+      LLAMA_CUDA_ARCHITECTURES: ${LLAMA_CUDA_ARCHITECTURES:-}
+      LLAMA_SERVER_REBUILD: ${LLAMA_SERVER_REBUILD:-0}
+      NVIDIA_VISIBLE_DEVICES: ${UNSLOTH_GPU_DEVICES:-all}
+      NVIDIA_DRIVER_CAPABILITIES: compute,utility
+    depends_on:
+      init:
+        condition: service_completed_successfully
+    volumes:
+      - ./scripts/build-llama.sh:/usr/local/bin/build-llama:ro
+      - ./scripts/llama-server-wrapper:/usr/local/share/llama-server-wrapper:ro
+      - ${DATA_DIR:?DATA_DIR is required}/${UNSLOTH_LLAMA_PATH:-llama}:/out
+    command: ["/usr/local/bin/build-llama"]
+
+  unsloth:
+    image: ${UNSLOTH_IMAGE:-unsloth-studio-bootstrap:local}
+    build:
+      context: .
+      args:
+        CUDA_IMAGE: ${UNSLOTH_CUDA_IMAGE:-nvidia/cuda:12.8.1-cudnn-devel-ubuntu24.04}
+    restart: unless-stopped
+    gpus: all
+    ipc: host
+    shm_size: 16gb
+    init: true
+    environment:
+      TZ: ${TZ:-Etc/UTC}
+      HOME: /home/unsloth
+      UNSLOTH_STUDIO_HOME: /home/unsloth/current
+      UNSLOTH_VERSION: ${UNSLOTH_VERSION:-latest}
+      UNSLOTH_UPDATE_CHECK: ${UNSLOTH_UPDATE_CHECK:-1}
+      UNSLOTH_AUTO_UPDATE: ${UNSLOTH_AUTO_UPDATE:-1}
+      UNSLOTH_UID: ${UNSLOTH_UID:-1000}
+      UNSLOTH_GID: ${UNSLOTH_GID:-1000}
+      LLAMA_CPP_MODE: ${LLAMA_CPP_MODE:-bundled}
+      LLAMA_SERVER_FLASH_ATTN: ${LLAMA_SERVER_FLASH_ATTN:-off}
+      LLAMA_SERVER_FIT: ${LLAMA_SERVER_FIT:-off}
+      HF_TOKEN: ${HF_TOKEN:-}
+      HF_HOME: /workspace/work/.cache/huggingface
+      HF_HUB_CACHE: /workspace/models
+      TORCH_HOME: /workspace/models/.cache/torch
+      NVIDIA_VISIBLE_DEVICES: ${UNSLOTH_GPU_DEVICES:-all}
+      NVIDIA_DRIVER_CAPABILITIES: compute,utility
+    depends_on:
+      init:
+        condition: service_completed_successfully
+      llama-setup:
+        condition: service_completed_successfully
+    volumes:
+      - ${DATA_DIR:?DATA_DIR is required}/${UNSLOTH_WORK_PATH:-work}:/workspace/work
+      - ${DATA_DIR:?DATA_DIR is required}/${UNSLOTH_CACHE_PATH:-cache}:/workspace/.cache
+      - ${DATA_DIR:?DATA_DIR is required}/${UNSLOTH_HOME_PATH:-home}:/home/unsloth
+      - ${DATA_DIR:?DATA_DIR is required}/${UNSLOTH_LLAMA_PATH:-llama}:/opt/llama-server:ro
+      - ${MODELS_PATH:?MODELS_PATH is required}:/workspace/models
+    networks: [internal]
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "--max-time", "5", "http://127.0.0.1:8000/"]
+      interval: 15s
+      timeout: 6s
+      retries: 10
+      start_period: ${UNSLOTH_HEALTH_START_PERIOD:-10m}
+
+  web:
+    image: nginx:1.27-alpine
+    restart: unless-stopped
+    depends_on:
+      unsloth:
+        condition: service_healthy
+    ports:
+      - "${UNSLOTH_BIND_ADDRESS:-127.0.0.1}:${UNSLOTH_PORT:-8000}:80"
+    volumes:
+      - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    networks: [internal]
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1/healthz"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+
+networks:
+  internal:
+    driver: bridge

@@ -1,0 +1,6 @@
+.env
+.git
+.github
+README.md
+docker-compose*.yml
+env.stack.env

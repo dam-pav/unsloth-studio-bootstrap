@@ -1,0 +1,13 @@
+services:
+  web:
+    ports: !reset []
+    mac_address: ${UNSLOTH_MAC_ADDRESS:?UNSLOTH_MAC_ADDRESS is required for macvlan}
+    networks:
+      internal: {}
+      macvlan:
+        ipv4_address: ${UNSLOTH_IPV4_ADDRESS:?UNSLOTH_IPV4_ADDRESS is required for macvlan}
+
+networks:
+  macvlan:
+    external: true
+    name: ${MACVLAN_NETWORK:-macvlan_net}
