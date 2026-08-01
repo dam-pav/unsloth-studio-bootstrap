@@ -34,7 +34,7 @@ services:
       - ./scripts/build-llama.sh:/usr/local/bin/build-llama:ro
       - ./scripts/llama-server-wrapper:/usr/local/share/llama-server-wrapper:ro
       - ${DATA_DIR:?DATA_DIR is required}/${UNSLOTH_LLAMA_PATH:-llama}:/out
-    command: ["/usr/local/bin/build-llama"]
+    command: ["/bin/bash", "/usr/local/bin/build-llama"]
 
   unsloth:
     image: ${UNSLOTH_IMAGE:-unsloth-studio-bootstrap:local}
