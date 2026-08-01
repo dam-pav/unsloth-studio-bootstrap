@@ -1,0 +1,4 @@
+services:
+  unsloth:
+    image: ${UNSLOTH_IMAGE:-ghcr.io/dam-pav/unsloth-studio-bootstrap:latest}
+    build: !reset null

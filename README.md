@@ -50,8 +50,8 @@ other variables are optional and use the listed default when unset.
 | `LLAMA_CPP_REF` |  | `b10079-mix-fb3d4ca` | Branch, tag, or commit built in custom mode; changing it invalidates the build cache. |
 | `LLAMA_CUDA_ARCHITECTURES` | ✓ when `custom` | none | Semicolon-separated CUDA compute capabilities to compile, such as `61` for Tesla P40. |
 | `LLAMA_SERVER_REBUILD` |  | `0` | Set to `1` to rebuild llama.cpp even when the cached build metadata matches. |
-| `LLAMA_SERVER_FLASH_ATTN` |  | `off` | Overrides Studio's llama-server flash-attention argument for a custom build. |
-| `LLAMA_SERVER_FIT` |  | `off` | Overrides Studio's llama-server model-fit argument; use `keep` to preserve Studio's value. |
+| `LLAMA_SERVER_FLASH_ATTN` |  | `off` | Custom mode only; bundled mode ignores this variable. The wrapper disables llama.cpp flash attention by default for compatibility with this repository's older Pascal/Tesla P40 deployment. Enable it only when the custom llama.cpp build and target GPU support it. |
+| `LLAMA_SERVER_FIT` |  | `off` | Custom mode only; bundled mode ignores this variable. llama.cpp's `--fit on` automatically adjusts otherwise-unset GPU-layer allocation, tensor split, tensor overrides, and an implicit context size so the model fits available device memory. `off` disables that automatic tuning. Set this variable to `on` to enable it, or `keep` to stop the wrapper from forcing a value and use llama.cpp's default (currently `on`). |
 | `UNSLOTH_GPU_DEVICES` |  | `all` | Controls which NVIDIA GPUs are visible to the setup and Studio containers. |
 | `HF_TOKEN` |  | empty | Hugging Face access token for gated or private model downloads. |
 | `TZ` |  | `Etc/UTC` | Sets the local time used by Studio and its logs. Match it to the host or operator time zone (for example, `Europe/Ljubljana`) to make timestamps easier to interpret and correlate. |
