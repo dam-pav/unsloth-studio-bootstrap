@@ -1,9 +1,15 @@
 # Unsloth Studio Bootstrap
 
-A GPU-enabled, self-updating Unsloth Studio deployment. The container image holds
-stable CUDA and operating-system dependencies; Studio itself is installed into
-persistent, versioned directories so frequent upstream releases do not require a
-new image.
+This repository provides a GPU-enabled, self-updating Unsloth Studio deployment
+for users who need newer Studio releases than the official GHCR image currently
+provides. That image severely lags behind upstream development, making recent
+features and fixes unavailable to image-based deployments.
+
+To close that gap without rebuilding an entire image for every Studio release,
+this deployment separates the stable CUDA and operating-system dependencies
+from Studio itself. Studio is installed into persistent, versioned directories
+and can update at container startup, while retaining a known working release for
+rollback.
 
 ## Requirements
 
@@ -20,6 +26,43 @@ cp .env.example .env
 
 `DATA_DIR` and `MODELS_PATH` are required. Compose stops with an explanatory
 error when either is missing. Persistent subdirectory names have safe defaults.
+
+## Environment variables
+
+A checkmark means the variable must be set for the deployment mode shown. All
+other variables are optional and use the listed default when unset.
+
+| Variable | Required | Default | Role and impact |
+| --- | :---: | --- | --- |
+| `DATA_DIR` | ✓ | none | Host directory containing persistent work, cache, home, and llama.cpp data. |
+| `MODELS_PATH` | ✓ | none | Host directory mounted as the shared model store. |
+| `UNSLOTH_WORK_PATH` |  | `work` | Work subdirectory beneath `DATA_DIR`; changing it selects a different persistent workspace. |
+| `UNSLOTH_CACHE_PATH` |  | `cache` | Cache subdirectory beneath `DATA_DIR`. |
+| `UNSLOTH_HOME_PATH` |  | `home` | Home and versioned Studio release subdirectory beneath `DATA_DIR`. |
+| `UNSLOTH_LLAMA_PATH` |  | `llama` | Subdirectory beneath `DATA_DIR` used for cached custom llama.cpp builds. |
+| `UNSLOTH_UID` |  | `1000` | UID that owns persistent files and runs Studio inside the container. |
+| `UNSLOTH_GID` |  | `1000` | GID that owns persistent files and runs Studio inside the container. |
+| `UNSLOTH_VERSION` |  | `latest` | Selects the stable release, an exact version, or `nightly`; see the release policy below. |
+| `UNSLOTH_UPDATE_CHECK` |  | `1` | Set to `0` to skip resolving a newer stable release when an installation already exists. |
+| `UNSLOTH_AUTO_UPDATE` |  | `1` | Set to `0` to keep running the installed release when a newer target is found. |
+| `LLAMA_CPP_MODE` |  | `bundled` | Uses Unsloth's managed llama.cpp; `custom` enables the build and settings below. |
+| `LLAMA_CPP_REPO` |  | Unsloth llama.cpp repository | Git repository cloned for a custom build. |
+| `LLAMA_CPP_REF` |  | `b10079-mix-fb3d4ca` | Branch, tag, or commit built in custom mode; changing it invalidates the build cache. |
+| `LLAMA_CUDA_ARCHITECTURES` | ✓ when `custom` | none | Semicolon-separated CUDA compute capabilities to compile, such as `61` for Tesla P40. |
+| `LLAMA_SERVER_REBUILD` |  | `0` | Set to `1` to rebuild llama.cpp even when the cached build metadata matches. |
+| `LLAMA_SERVER_FLASH_ATTN` |  | `off` | Overrides Studio's llama-server flash-attention argument for a custom build. |
+| `LLAMA_SERVER_FIT` |  | `off` | Overrides Studio's llama-server model-fit argument; use `keep` to preserve Studio's value. |
+| `UNSLOTH_GPU_DEVICES` |  | `all` | Controls which NVIDIA GPUs are visible to the setup and Studio containers. |
+| `HF_TOKEN` |  | empty | Hugging Face access token for gated or private model downloads. |
+| `TZ` |  | `Etc/UTC` | Container time zone. |
+| `UNSLOTH_BIND_ADDRESS` |  | `127.0.0.1` | Host interface used by the NAT/local web endpoint. |
+| `UNSLOTH_PORT` |  | `8000` | Host port used by the NAT/local web endpoint. |
+| `MACVLAN_NETWORK` |  | `macvlan_net` | Name of the existing Docker macvlan network used by the override. |
+| `UNSLOTH_IPV4_ADDRESS` | ✓ with macvlan | none | Static LAN address assigned to the web container. |
+| `UNSLOTH_MAC_ADDRESS` | ✓ with macvlan | none | Static MAC address assigned to the web container. |
+| `UNSLOTH_IMAGE` |  | `unsloth-studio-bootstrap:local` | Runtime image name or registry reference; affects whether Compose builds or pulls the deployment image. |
+| `UNSLOTH_CUDA_IMAGE` |  | `nvidia/cuda:12.8.1-cudnn-devel-ubuntu24.04` | CUDA base image used when building the runtime image. |
+| `UNSLOTH_HEALTH_START_PERIOD` |  | `10m` | Grace period before failed Studio health checks count against the container. |
 
 ## Run locally or in WSL (NAT)
 
@@ -77,6 +120,18 @@ latest Studio scaffold. Keep a known-working container image and data backup for
 long-lived production rollback requirements.
 
 ## llama.cpp policy
+
+`llama.cpp` provides the native inference server used to run exported models.
+The managed build supplied by Unsloth is the simplest choice for supported
+hardware, but a custom build is useful when its precompiled CUDA targets do not
+include an older GPU, or when a deployment must pin a known llama.cpp revision.
+Compiling locally makes the required CUDA architecture explicit and produces a
+server binary optimized for the GPUs that will actually run it.
+
+Our own deployment, for example, runs on older NVIDIA Tesla P40 GPUs. These are
+Pascal cards with CUDA compute capability 6.1, so we build llama.cpp ourselves
+with `LLAMA_CUDA_ARCHITECTURES=61` instead of relying on a managed binary that
+may not include Pascal support.
 
 Use Unsloth's managed build (default):
 
