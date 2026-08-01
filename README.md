@@ -61,6 +61,8 @@ other variables are optional and use the listed default when unset.
 | `UNSLOTH_IPV4_ADDRESS` | ✓ with macvlan | none | Static LAN address assigned to the web container. |
 | `UNSLOTH_MAC_ADDRESS` | ✓ with macvlan | none | Static MAC address assigned to the web container. |
 | `UNSLOTH_IMAGE` |  | `unsloth-studio-bootstrap:local` | Runtime image name or registry reference; affects whether Compose builds or pulls the deployment image. |
+| `LLAMA_SETUP_IMAGE` |  | `ghcr.io/dam-pav/unsloth-studio-bootstrap-llama-setup:latest` | Helper image containing the custom llama.cpp build scripts. |
+| `UNSLOTH_WEB_IMAGE` |  | `ghcr.io/dam-pav/unsloth-studio-bootstrap-web:latest` | Nginx image containing the Studio reverse-proxy configuration. |
 | `UNSLOTH_CUDA_IMAGE` |  | `nvidia/cuda:12.8.1-cudnn-devel-ubuntu24.04` | NVIDIA CUDA base used to build the runtime image. When NVIDIA publishes an update you want to adopt, set this to the desired compatible `nvidia/cuda` `cudnn-devel` Ubuntu tag, verify that the host driver supports its CUDA version, then run `docker compose build --pull unsloth` followed by `docker compose up -d` to rebuild and deploy it. |
 | `UNSLOTH_HEALTH_START_PERIOD` |  | `10m` | Grace period before failed Studio health checks count against the container. |
 
@@ -84,6 +86,15 @@ docker compose -f docker-compose.yml -f docker-compose.macvlan.yml up -d --build
 
 The override removes the NAT port mapping. Docker hosts normally cannot contact
 their own macvlan containers without an additional host-side macvlan interface.
+
+## Deploy from Git with Portainer
+
+Use `docker-compose.yml` as the Compose path. Add
+`docker-compose.macvlan.yml` for transparent LAN mode and
+`docker-compose.portainer.yml` to use the published runtime image instead of
+building it through Portainer. The deployment images contain their scripts and
+Nginx configuration, so the stack does not bind-mount files from Portainer's
+Git checkout onto the Docker endpoint.
 
 ## Studio release policy
 
@@ -155,9 +166,10 @@ successful build is retained as `previous`.
 ## Updates and image rebuilds
 
 Studio updates are handled at startup independently of the container image.
-The included GitHub Actions workflow rebuilds the runtime image weekly with
-`pull: true`, so an updated CUDA base image is incorporated automatically. Pushes
-to `main` and manual workflow runs also publish to GHCR.
+The included GitHub Actions workflow rebuilds the runtime, llama.cpp setup, and
+web images weekly with `pull: true`, so updated base images are incorporated
+automatically. Relevant pushes to `main` and manual workflow runs also publish
+all three images to GHCR.
 
 A separate weekly workflow checks Docker Hub for newer NVIDIA CUDA releases in
 the currently selected CUDA major and `cudnn-devel` Ubuntu image family. When it

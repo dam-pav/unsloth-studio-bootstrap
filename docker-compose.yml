@@ -16,7 +16,7 @@ services:
     command: ["/bin/sh", "-ec", "mkdir -p /persist/work /persist/cache /persist/home /persist/llama; chown -R $${UNSLOTH_UID}:$${UNSLOTH_GID} /persist/work /persist/cache /persist/home /persist/llama; chmod -R u+rwX,g+rwX,o-rwx /persist/work /persist/cache /persist/home /persist/llama"]
 
   llama-setup:
-    image: nvidia/cuda:12.4.1-devel-ubuntu22.04
+    image: ${LLAMA_SETUP_IMAGE:-ghcr.io/dam-pav/unsloth-studio-bootstrap-llama-setup:latest}
     restart: "no"
     gpus: all
     environment:
@@ -31,10 +31,7 @@ services:
       init:
         condition: service_completed_successfully
     volumes:
-      - ./scripts/build-llama.sh:/usr/local/bin/build-llama:ro
-      - ./scripts/llama-server-wrapper:/usr/local/share/llama-server-wrapper:ro
       - ${DATA_DIR:?DATA_DIR is required}/${UNSLOTH_LLAMA_PATH:-llama}:/out
-    command: ["/bin/bash", "/usr/local/bin/build-llama"]
 
   unsloth:
     image: ${UNSLOTH_IMAGE:-unsloth-studio-bootstrap:local}
@@ -85,15 +82,13 @@ services:
       start_period: ${UNSLOTH_HEALTH_START_PERIOD:-10m}
 
   web:
-    image: nginx:1.27-alpine
+    image: ${UNSLOTH_WEB_IMAGE:-ghcr.io/dam-pav/unsloth-studio-bootstrap-web:latest}
     restart: unless-stopped
     depends_on:
       unsloth:
         condition: service_healthy
     ports:
       - "${UNSLOTH_BIND_ADDRESS:-127.0.0.1}:${UNSLOTH_PORT:-8000}:80"
-    volumes:
-      - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
     networks: [internal]
     healthcheck:
       test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1/healthz"]

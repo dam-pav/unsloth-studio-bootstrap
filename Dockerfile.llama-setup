@@ -1,0 +1,8 @@
+ARG CUDA_IMAGE=nvidia/cuda:12.4.1-devel-ubuntu22.04
+FROM ${CUDA_IMAGE}
+
+COPY scripts/build-llama.sh /usr/local/bin/build-llama
+COPY scripts/llama-server-wrapper /usr/local/share/llama-server-wrapper
+RUN chmod 755 /usr/local/bin/build-llama /usr/local/share/llama-server-wrapper
+
+ENTRYPOINT ["/usr/local/bin/build-llama"]
