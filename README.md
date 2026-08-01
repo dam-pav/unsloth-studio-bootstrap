@@ -54,14 +54,14 @@ other variables are optional and use the listed default when unset.
 | `LLAMA_SERVER_FIT` |  | `off` | Overrides Studio's llama-server model-fit argument; use `keep` to preserve Studio's value. |
 | `UNSLOTH_GPU_DEVICES` |  | `all` | Controls which NVIDIA GPUs are visible to the setup and Studio containers. |
 | `HF_TOKEN` |  | empty | Hugging Face access token for gated or private model downloads. |
-| `TZ` |  | `Etc/UTC` | Container time zone. |
+| `TZ` |  | `Etc/UTC` | Sets the local time used by Studio and its logs. Match it to the host or operator time zone (for example, `Europe/Ljubljana`) to make timestamps easier to interpret and correlate. |
 | `UNSLOTH_BIND_ADDRESS` |  | `127.0.0.1` | Host interface used by the NAT/local web endpoint. |
 | `UNSLOTH_PORT` |  | `8000` | Host port used by the NAT/local web endpoint. |
 | `MACVLAN_NETWORK` |  | `macvlan_net` | Name of the existing Docker macvlan network used by the override. |
 | `UNSLOTH_IPV4_ADDRESS` | ✓ with macvlan | none | Static LAN address assigned to the web container. |
 | `UNSLOTH_MAC_ADDRESS` | ✓ with macvlan | none | Static MAC address assigned to the web container. |
 | `UNSLOTH_IMAGE` |  | `unsloth-studio-bootstrap:local` | Runtime image name or registry reference; affects whether Compose builds or pulls the deployment image. |
-| `UNSLOTH_CUDA_IMAGE` |  | `nvidia/cuda:12.8.1-cudnn-devel-ubuntu24.04` | CUDA base image used when building the runtime image. |
+| `UNSLOTH_CUDA_IMAGE` |  | `nvidia/cuda:12.8.1-cudnn-devel-ubuntu24.04` | NVIDIA CUDA base used to build the runtime image. When NVIDIA publishes an update you want to adopt, set this to the desired compatible `nvidia/cuda` `cudnn-devel` Ubuntu tag, verify that the host driver supports its CUDA version, then run `docker compose build --pull unsloth` followed by `docker compose up -d` to rebuild and deploy it. |
 | `UNSLOTH_HEALTH_START_PERIOD` |  | `10m` | Grace period before failed Studio health checks count against the container. |
 
 ## Run locally or in WSL (NAT)
@@ -158,6 +158,13 @@ Studio updates are handled at startup independently of the container image.
 The included GitHub Actions workflow rebuilds the runtime image weekly with
 `pull: true`, so an updated CUDA base image is incorporated automatically. Pushes
 to `main` and manual workflow runs also publish to GHCR.
+
+A separate weekly workflow checks Docker Hub for newer NVIDIA CUDA releases in
+the currently selected CUDA major and `cudnn-devel` Ubuntu image family. When it
+finds one, it first test-builds the runtime image and then opens a pull request
+updating the defaults in the Dockerfile, Compose file, and this README. New CUDA
+major versions are intentionally not selected automatically because they can
+require a newer host driver or other compatibility changes.
 
 Useful commands:
 

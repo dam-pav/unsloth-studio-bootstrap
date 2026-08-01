@@ -1,0 +1,132 @@
+name: Update NVIDIA CUDA base image
+
+on:
+  schedule:
+    - cron: "43 3 * * 2"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: cuda-base-update
+  cancel-in-progress: false
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Find the latest compatible CUDA image
+        id: cuda
+        shell: python
+        run: |
+          import json
+          import os
+          import pathlib
+          import re
+          import urllib.request
+
+          dockerfile = pathlib.Path("Dockerfile").read_text()
+          match = re.search(
+              r"^ARG CUDA_IMAGE=nvidia/cuda:"
+              r"(?P<version>\d+\.\d+\.\d+)"
+              r"(?P<flavor>-cudnn-devel-ubuntu24\.04)$",
+              dockerfile,
+              re.MULTILINE,
+          )
+          if not match:
+              raise SystemExit("Cannot parse CUDA_IMAGE from Dockerfile")
+
+          current = match.group("version")
+          flavor = match.group("flavor")
+          major = current.split(".", 1)[0]
+          pattern = re.compile(
+              rf"^(?P<version>{re.escape(major)}\.\d+\.\d+)"
+              rf"{re.escape(flavor)}$"
+          )
+
+          versions = {}
+          url = (
+              "https://hub.docker.com/v2/repositories/nvidia/cuda/tags/"
+              "?page_size=100&name=cudnn-devel-ubuntu24.04"
+          )
+          while url:
+              with urllib.request.urlopen(url, timeout=30) as response:
+                  page = json.load(response)
+              for item in page["results"]:
+                  tag = item["name"]
+                  candidate = pattern.fullmatch(tag)
+                  if candidate:
+                      version = candidate.group("version")
+                      versions[tuple(map(int, version.split(".")))] = version
+              url = page.get("next")
+
+          if not versions:
+              raise SystemExit(
+                  f"No CUDA {major}.x tags with flavor {flavor} were found"
+              )
+
+          latest = versions[max(versions)]
+          with open(os.environ["GITHUB_OUTPUT"], "a") as output:
+              output.write(f"current={current}\n")
+              output.write(f"latest={latest}\n")
+              output.write(f"flavor={flavor}\n")
+              output.write(f"update={'true' if latest != current else 'false'}\n")
+
+      - name: Set up Docker Buildx
+        if: steps.cuda.outputs.update == 'true'
+        uses: docker/setup-buildx-action@v3
+
+      - name: Test the candidate runtime image
+        if: steps.cuda.outputs.update == 'true'
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          pull: true
+          push: false
+          build-args: |
+            CUDA_IMAGE=nvidia/cuda:${{ steps.cuda.outputs.latest }}${{ steps.cuda.outputs.flavor }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Update the pinned CUDA image
+        if: steps.cuda.outputs.update == 'true'
+        env:
+          CURRENT: ${{ steps.cuda.outputs.current }}
+          LATEST: ${{ steps.cuda.outputs.latest }}
+          FLAVOR: ${{ steps.cuda.outputs.flavor }}
+        shell: python
+        run: |
+          import os
+          import pathlib
+
+          old = f"nvidia/cuda:{os.environ['CURRENT']}{os.environ['FLAVOR']}"
+          new = f"nvidia/cuda:{os.environ['LATEST']}{os.environ['FLAVOR']}"
+          paths = [pathlib.Path(name) for name in ("Dockerfile", "docker-compose.yml", "README.md")]
+          replacements = 0
+          for path in paths:
+              text = path.read_text()
+              count = text.count(old)
+              if count == 0:
+                  raise SystemExit(f"Expected {old} in {path}")
+              path.write_text(text.replace(old, new))
+              replacements += count
+          print(f"Updated {replacements} references from {old} to {new}")
+
+      - name: Open update pull request
+        if: steps.cuda.outputs.update == 'true'
+        uses: peter-evans/create-pull-request@v7
+        with:
+          branch: automation/update-cuda-base
+          delete-branch: true
+          commit-message: Update CUDA base image to ${{ steps.cuda.outputs.latest }}
+          title: Update CUDA base image to ${{ steps.cuda.outputs.latest }}
+          body: |
+            Updates the NVIDIA CUDA runtime base from `${{ steps.cuda.outputs.current }}`
+            to `${{ steps.cuda.outputs.latest }}` using the existing image flavor.
+
+            The workflow successfully built the runtime image with the new base
+            before creating this pull request.
