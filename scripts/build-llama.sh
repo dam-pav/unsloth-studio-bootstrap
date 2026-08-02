@@ -18,8 +18,16 @@ fi
 
 repo="${LLAMA_CPP_REPO:-https://github.com/unslothai/llama.cpp.git}"
 ref="${LLAMA_CPP_REF:-b10079-mix-fb3d4ca}"
+unsloth_uid="${UNSLOTH_UID:-1000}"
+unsloth_gid="${UNSLOTH_GID:-1000}"
 metadata=/out/llama-server.build
 build_id="repo=$repo;ref=$ref;arch=$LLAMA_CUDA_ARCHITECTURES;cuda=12.4.1;wrapper=1"
+
+# mktemp creates build directories as root with mode 0700. Repair cached builds
+# from older setup images before Studio attempts to traverse the read-only mount.
+if [[ -d /out/current ]]; then
+  chown "$unsloth_uid:$unsloth_gid" /out/current
+fi
 
 if [[ "${LLAMA_SERVER_REBUILD:-0}" != 1 ]] && [[ -x /out/current/llama-server ]] \
     && grep -Fxq "$build_id" "$metadata" 2>/dev/null; then
@@ -32,6 +40,7 @@ apt-get update
 apt-get install -y --no-install-recommends ca-certificates git build-essential cmake libcurl4-openssl-dev ninja-build
 
 stage="$(mktemp -d /out/.build.XXXXXX)"
+chown "$unsloth_uid:$unsloth_gid" "$stage"
 trap 'rm -rf "$stage"' EXIT
 git clone --filter=blob:none "$repo" "$stage/source"
 if ! git -C "$stage/source" checkout "$ref"; then
