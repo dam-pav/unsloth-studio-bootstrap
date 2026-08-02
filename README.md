@@ -241,6 +241,36 @@ Multiple CUDA architectures can be separated with semicolons, for example
 list, and wrapper version. A replacement is built in staging and the previous
 successful build is retained as `previous`.
 
+## Use Cases
+
+### Example minimal deployment in WSL 2
+
+As an alternative to running Unsloth Studio via a PowerShell terminal each time you find out it's not running for one reason or the other, you can run the same thing in WSL, where it behaves as a service, starting up automatically even after a host restart. I recommend running Portainer under WSL as well and run Unsloth Studio as a Git stack. You can make it keep up to date automatically, should this source repo and its compose files be updated.
+
+This configuration was validated with Docker Engine installed directly inside
+an Ubuntu WSL 2 distribution. It uses Unsloth's bundled llama.cpp build and the
+default release, GPU, storage-subdirectory, bind-address, and port settings.
+
+Create `.env` with two host paths and, optionally, the local time zone:
+
+```dotenv
+DATA_DIR=/home/example/unsloth
+MODELS_PATH=/home/example/models
+TZ=Etc/UTC
+```
+
+Replace `example` with the Linux user name inside the WSL distribution, then
+create the directories and deploy from the repository checkout:
+
+```bash
+mkdir -p /home/example/unsloth /home/example/models
+docker compose up -d --build
+```
+
+The NVIDIA driver interface, NVIDIA Container Toolkit, and Docker GPU access
+must already pass the validation described under **NVIDIA and Docker setup**.
+No macvlan network or Portainer override is used for this local NAT deployment.
+
 ### Example custom-build deployment using Portainer
 
 This configuration was validated on a Portainer Agent endpoint with an NVIDIA
