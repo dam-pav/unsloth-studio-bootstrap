@@ -124,8 +124,8 @@ other variables are optional and use the listed default when unset.
 | `UNSLOTH_UPDATE_CHECK` |  | `1` | Set to `0` to skip resolving a newer stable release when an installation already exists. |
 | `UNSLOTH_AUTO_UPDATE` |  | `1` | Set to `0` to keep running the installed release when a newer target is found. |
 | `LLAMA_CPP_MODE` |  | `bundled` | Uses Unsloth's managed llama.cpp; `custom` enables the build and settings below. |
-| `LLAMA_CPP_REPO` |  | Unsloth llama.cpp repository | Git repository cloned for a custom build. |
-| `LLAMA_CPP_REF` |  | `b10079-mix-fb3d4ca` | Branch, tag, or commit built in custom mode; changing it invalidates the build cache. |
+| `LLAMA_CPP_REPO` |  | `https://github.com/unslothai/llama.cpp.git` | Git repository cloned for a custom build. |
+| `LLAMA_CPP_REF` |  | `b10079-mix-fb3d4ca` | Branch, tag, or commit built in custom mode; changing the repository requires a ref that exists there, and changing either value invalidates the build cache. |
 | `LLAMA_CUDA_ARCHITECTURES` | ✓ when `custom` | none | Semicolon-separated CUDA compute capabilities to compile, such as `61` for Tesla P40. |
 | `LLAMA_SERVER_REBUILD` |  | `0` | Set to `1` to rebuild llama.cpp even when the cached build metadata matches. |
 | `LLAMA_SERVER_FLASH_ATTN` |  | `off` | Custom mode only; bundled mode ignores this variable. The wrapper disables llama.cpp flash attention by default for compatibility with this repository's older Pascal/Tesla P40 deployment. Enable it only when the custom llama.cpp build and target GPU support it. |
