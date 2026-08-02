@@ -14,9 +14,87 @@ rollback.
 ## Requirements
 
 - Docker Engine with Compose v2
-- NVIDIA Container Toolkit
+- NVIDIA Container Toolkit on native Linux or inside WSL 2
 - A compatible NVIDIA driver
 - An existing macvlan network when using transparent LAN mode
+
+This deployment currently supports NVIDIA GPU acceleration only. CPU-only
+operation and hosts without a working NVIDIA container runtime are unsupported.
+The host must successfully expose an NVIDIA GPU to Docker before deploying the
+stack.
+
+### NVIDIA and Docker setup
+
+On a native Linux host, including a standalone Ubuntu server:
+
+1. Install Docker Engine and the Compose plugin using Docker's supported
+   instructions for the host distribution, such as
+   [Install Docker Engine on Ubuntu](https://docs.docker.com/engine/install/ubuntu/).
+   Verify the installation with `docker version` and `docker compose version`.
+2. Install a compatible NVIDIA driver using the
+   [NVIDIA Driver Installation Guide](https://docs.nvidia.com/datacenter/tesla/driver-installation-guide/latest/),
+   reboot if required, and verify that `nvidia-smi` works on the host.
+3. Install the
+   [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html)
+   for the host distribution.
+4. Configure Docker to use the NVIDIA runtime and restart Docker:
+
+   ```bash
+   sudo nvidia-ctk runtime configure --runtime=docker
+   sudo systemctl restart docker
+   ```
+
+For Docker Engine installed directly inside an Ubuntu WSL 2 distribution:
+
+1. Install or update WSL 2 from an elevated PowerShell prompt, then reboot if
+   Windows requests it:
+
+   ```powershell
+   wsl.exe --install
+   wsl.exe --update
+   ```
+
+2. Install a current NVIDIA **Windows** driver that supports CUDA on WSL. Do not
+   install a Linux NVIDIA display driver inside the WSL distribution; Windows
+   provides the driver interface to WSL. Follow NVIDIA's
+   [CUDA on WSL guide](https://docs.nvidia.com/cuda/wsl-user-guide/index.html).
+3. Ensure the distribution runs as WSL 2 with `wsl.exe -l -v`. Enable systemd
+   inside the distribution if it is not already enabled, then restart WSL with
+   `wsl.exe --shutdown` from PowerShell. See Microsoft's
+   [WSL systemd guidance](https://learn.microsoft.com/en-us/windows/wsl/systemd).
+4. Inside WSL, install Docker Engine and the Compose plugin using the
+   [Ubuntu installation instructions](https://docs.docker.com/engine/install/ubuntu/).
+   Verify both `docker version` and `docker compose version` before continuing.
+5. Inside WSL, install the
+   [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html),
+   configure it for Docker, and restart the daemon:
+
+   ```bash
+   sudo nvidia-ctk runtime configure --runtime=docker
+   sudo systemctl restart docker
+   ```
+
+This project does not use or recommend Docker Desktop. Avoid running Docker
+Desktop and an independent Docker Engine for the same WSL workflow, as multiple
+daemons and contexts make it easy to deploy to the wrong engine.
+
+The deployment images already contain the required CUDA user-space libraries
+and build tools, so neither native Linux nor WSL requires a host CUDA Toolkit
+installation. Validate GPU access from Docker before continuing:
+
+```bash
+docker run --rm -it --gpus=all \
+  nvcr.io/nvidia/k8s/cuda-sample:nbody nbody -gpu -benchmark
+```
+
+The test must detect and use at least one CUDA device. If it fails, resolve the
+driver, WSL, Docker, or NVIDIA runtime configuration before deploying this
+stack. See Docker's
+[Ubuntu Engine installation guide](https://docs.docker.com/engine/install/ubuntu/),
+NVIDIA's [CUDA on WSL guide](https://docs.nvidia.com/cuda/wsl-user-guide/index.html),
+and the
+[NVIDIA Container Toolkit guide](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html)
+for current prerequisites and troubleshooting guidance.
 
 ## Configure
 
@@ -56,7 +134,7 @@ other variables are optional and use the listed default when unset.
 | `HF_TOKEN` |  | empty | Hugging Face access token for gated or private model downloads. |
 | `TZ` |  | `Etc/UTC` | Sets the local time used by Studio and its logs. Match it to the host or operator time zone (for example, `Europe/Ljubljana`) to make timestamps easier to interpret and correlate. |
 | `UNSLOTH_BIND_ADDRESS` |  | `127.0.0.1` | Host interface used by the NAT/local web endpoint. |
-| `UNSLOTH_PORT` |  | `8000` | Host port used by the NAT/local web endpoint. |
+| `UNSLOTH_PORT` |  | `8888` | Host port used by the NAT/local web endpoint. |
 | `MACVLAN_NETWORK` |  | `macvlan_net` | Name of the existing Docker macvlan network used by the override. |
 | `UNSLOTH_IPV4_ADDRESS` | ✓ with macvlan | none | Static LAN address assigned to the web container. |
 | `UNSLOTH_MAC_ADDRESS` | ✓ with macvlan | none | Static MAC address assigned to the web container. |
@@ -72,7 +150,7 @@ other variables are optional and use the listed default when unset.
 docker compose up -d --build
 ```
 
-Studio is available at `http://127.0.0.1:8000` by default. Change
+Studio is available at `http://127.0.0.1:8888` by default. Change
 `UNSLOTH_BIND_ADDRESS` to expose it on another host interface.
 
 ## Run with a transparent LAN address (macvlan)

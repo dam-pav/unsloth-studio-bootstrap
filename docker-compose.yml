@@ -90,7 +90,7 @@ services:
       unsloth:
         condition: service_healthy
     ports:
-      - "${UNSLOTH_BIND_ADDRESS:-127.0.0.1}:${UNSLOTH_PORT:-8000}:80"
+      - "${UNSLOTH_BIND_ADDRESS:-127.0.0.1}:${UNSLOTH_PORT:-8888}:80"
     networks: [internal]
     healthcheck:
       test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1/healthz"]
