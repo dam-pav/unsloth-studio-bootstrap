@@ -163,6 +163,52 @@ Multiple CUDA architectures can be separated with semicolons, for example
 list, and wrapper version. A replacement is built in staging and the previous
 successful build is retained as `previous`.
 
+### Example custom-build deployment using Portainer
+
+This configuration was validated on a Portainer Agent endpoint with an NVIDIA
+Tesla P40, a custom llama.cpp CUDA build targeting compute capability 6.1, and
+a macvlan address. In Portainer, use `docker-compose.yml` as the Compose path
+and add `docker-compose.macvlan.yml` followed by
+`docker-compose.portainer.yml` as additional paths.
+
+```dotenv
+DATA_DIR=<persistent-data-path>
+MODELS_PATH=<shared-model-path>
+LLAMA_CPP_MODE=custom
+LLAMA_CPP_REPO=https://github.com/unslothai/llama.cpp.git
+LLAMA_CPP_REF=b10079-mix-fb3d4ca
+LLAMA_CUDA_ARCHITECTURES=61
+MACVLAN_NETWORK=macvlan_net
+UNSLOTH_IPV4_ADDRESS=<static-lan-ip>
+UNSLOTH_MAC_ADDRESS=<locally-administered-unicast-mac>
+TZ=<IANA-time-zone>
+HF_TOKEN=
+UNSLOTH_GPU_DEVICES=all
+```
+
+The external macvlan network was created on the Docker endpoint with:
+
+```bash
+docker network create \
+  --driver macvlan \
+  --subnet <lan-subnet-in-CIDR-notation> \
+  --gateway <lan-gateway> \
+  --opt parent=<host-network-interface> \
+  macvlan_net
+```
+
+Adapt the storage paths, address, subnet, gateway, and parent interface to the
+target host. Use a valid locally administered unicast MAC address, and reserve
+the static IP address outside the DHCP pool. Because the network is declared
+external, it must already exist on the target Portainer Agent's Docker endpoint;
+creating it on the Portainer Server host does not make it available to agents.
+Compose does not create this network.
+
+After Studio starts with a custom build, open **Settings**, select **General**,
+and disable **llama.cpp update notifications** in the **Notification** group.
+Those notifications concern Unsloth's managed llama.cpp build and are not
+useful when this deployment pins and maintains its own build.
+
 ## Updates and image rebuilds
 
 Studio updates are handled at startup independently of the container image.
