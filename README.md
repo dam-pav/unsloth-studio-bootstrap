@@ -141,7 +141,6 @@ other variables are optional and use the listed default when unset.
 | `UNSLOTH_IMAGE` |  | `unsloth-studio-bootstrap:local` | Runtime image name or registry reference; affects whether Compose builds or pulls the deployment image. |
 | `LLAMA_SETUP_IMAGE` |  | `ghcr.io/dam-pav/unsloth-studio-bootstrap-llama-setup:latest` | Helper image containing the custom llama.cpp build scripts. |
 | `UNSLOTH_WEB_IMAGE` |  | `ghcr.io/dam-pav/unsloth-studio-bootstrap-web:latest` | Nginx image containing the Studio reverse-proxy configuration. |
-| `UNSLOTH_CUDA_IMAGE` |  | `nvidia/cuda:12.8.1-cudnn-devel-ubuntu24.04` | NVIDIA CUDA base used to build the runtime image. When NVIDIA publishes an update you want to adopt, set this to the desired compatible `nvidia/cuda` `cudnn-devel` Ubuntu tag, verify that the host driver supports its CUDA version, then run `docker compose build --pull unsloth` followed by `docker compose up -d` to rebuild and deploy it. |
 | `UNSLOTH_HEALTH_START_PERIOD` |  | `10m` | Grace period before failed Studio health checks count against the container. |
 
 ## Run locally or in WSL (NAT)
@@ -337,13 +336,10 @@ incorporate base-image updates. For Portainer Git deployments, enable
 **Re-pull image** so it retrieves these images when a Compose update redeploys
 the stack.
 
-The repository periodically advances the default `UNSLOTH_CUDA_IMAGE` to a
-verified CUDA base release within the supported major version, so users
-following the Compose files normally do not need to maintain this setting.
-CUDA major-version upgrades can require a newer host driver; before overriding
-the default with a different major version, verify that the NVIDIA driver on
-the Docker host supports it. The container image update does not update the
-host driver itself.
+The runtime image is periodically advanced to a newer build-tested CUDA base
+release within the supported major version, so users normally do not need to
+select or maintain a CUDA container image. The NVIDIA driver remains a host
+dependency and is not updated with the container image.
 
 Useful commands:
 

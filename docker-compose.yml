@@ -41,8 +41,6 @@ services:
       io.unsloth.studio.release-trigger: "2026.8.2"
     build:
       context: .
-      args:
-        CUDA_IMAGE: ${UNSLOTH_CUDA_IMAGE:-nvidia/cuda:12.8.1-cudnn-devel-ubuntu24.04}
     restart: unless-stopped
     gpus: all
     ipc: host

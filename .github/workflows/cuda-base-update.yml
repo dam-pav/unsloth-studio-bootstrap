@@ -105,16 +105,13 @@ jobs:
 
           old = f"nvidia/cuda:{os.environ['CURRENT']}{os.environ['FLAVOR']}"
           new = f"nvidia/cuda:{os.environ['LATEST']}{os.environ['FLAVOR']}"
-          paths = [pathlib.Path(name) for name in ("Dockerfile", "docker-compose.yml", "README.md")]
-          replacements = 0
-          for path in paths:
-              text = path.read_text()
-              count = text.count(old)
-              if count == 0:
-                  raise SystemExit(f"Expected {old} in {path}")
-              path.write_text(text.replace(old, new))
-              replacements += count
-          print(f"Updated {replacements} references from {old} to {new}")
+          path = pathlib.Path("Dockerfile")
+          text = path.read_text()
+          count = text.count(old)
+          if count != 1:
+              raise SystemExit(f"Expected one reference to {old} in {path}, found {count}")
+          path.write_text(text.replace(old, new))
+          print(f"Updated the runtime base from {old} to {new}")
 
       - name: Open update pull request
         if: steps.cuda.outputs.update == 'true'
