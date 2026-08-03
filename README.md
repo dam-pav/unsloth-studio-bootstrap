@@ -174,6 +174,11 @@ building it through Portainer. The deployment images contain their scripts and
 Nginx configuration, so the stack does not bind-mount files from Portainer's
 Git checkout onto the Docker endpoint.
 
+Enable GitOps polling without **Force redeployment**. New stable Unsloth
+releases cause a Compose change that Portainer detects, recreating the Studio
+container so the bootstrap can install the update. This avoids periodic
+restarts when no release is available.
+
 ## Studio release policy
 
 The default follows the latest stable PyPI release and checks once whenever the
@@ -327,17 +332,18 @@ useful when this deployment pins and maintains its own build.
 ## Updates and image rebuilds
 
 Studio updates are handled at startup independently of the container image.
-The included GitHub Actions workflow rebuilds the runtime, llama.cpp setup, and
-web images weekly with `pull: true`, so updated base images are incorporated
-automatically. Relevant pushes to `main` and manual workflow runs also publish
-all three images to GHCR.
+Published runtime, llama.cpp setup, and web images are refreshed regularly to
+incorporate base-image updates. For Portainer Git deployments, enable
+**Re-pull image** so it retrieves these images when a Compose update redeploys
+the stack.
 
-A separate weekly workflow checks Docker Hub for newer NVIDIA CUDA releases in
-the currently selected CUDA major and `cudnn-devel` Ubuntu image family. When it
-finds one, it first test-builds the runtime image and then opens a pull request
-updating the defaults in the Dockerfile, Compose file, and this README. New CUDA
-major versions are intentionally not selected automatically because they can
-require a newer host driver or other compatibility changes.
+The repository periodically advances the default `UNSLOTH_CUDA_IMAGE` to a
+verified CUDA base release within the supported major version, so users
+following the Compose files normally do not need to maintain this setting.
+CUDA major-version upgrades can require a newer host driver; before overriding
+the default with a different major version, verify that the NVIDIA driver on
+the Docker host supports it. The container image update does not update the
+host driver itself.
 
 Useful commands:
 

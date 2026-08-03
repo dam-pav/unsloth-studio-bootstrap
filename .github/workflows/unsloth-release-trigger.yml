@@ -1,0 +1,80 @@
+name: Trigger Unsloth Studio release update
+
+on:
+  schedule:
+    - cron: "23 */6 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: unsloth-release-trigger
+  cancel-in-progress: false
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Read the latest stable Unsloth release
+        id: release
+        shell: python
+        run: |
+          import json
+          import os
+          import re
+          import urllib.request
+
+          with urllib.request.urlopen(
+              "https://pypi.org/pypi/unsloth/json", timeout=30
+          ) as response:
+              version = json.load(response)["info"]["version"]
+
+          if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._+!-]*", version):
+              raise SystemExit(f"PyPI returned an invalid version: {version!r}")
+
+          with open(os.environ["GITHUB_OUTPUT"], "a") as output:
+              output.write(f"version={version}\n")
+
+      - name: Update the Compose release trigger
+        id: compose
+        env:
+          VERSION: ${{ steps.release.outputs.version }}
+        shell: python
+        run: |
+          import os
+          import pathlib
+          import re
+
+          path = pathlib.Path("docker-compose.yml")
+          text = path.read_text()
+          pattern = re.compile(
+              r'(?m)^(\s+io\.unsloth\.studio\.release-trigger: )"[^"]+"$'
+          )
+          updated, count = pattern.subn(
+              rf'\g<1>"{os.environ["VERSION"]}"', text
+          )
+          if count != 1:
+              raise SystemExit(
+                  f"Expected exactly one Compose release trigger, found {count}"
+              )
+
+          changed = updated != text
+          if changed:
+              path.write_text(updated)
+
+          with open(os.environ["GITHUB_OUTPUT"], "a") as output:
+              output.write(f"changed={'true' if changed else 'false'}\n")
+
+      - name: Commit the release trigger
+        if: steps.compose.outputs.changed == 'true'
+        env:
+          VERSION: ${{ steps.release.outputs.version }}
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add docker-compose.yml
+          git commit -m "Trigger Unsloth Studio ${VERSION} update"
+          git push
