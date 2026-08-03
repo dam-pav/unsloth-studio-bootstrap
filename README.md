@@ -202,6 +202,13 @@ release becomes `current` only after the installer completes and the launcher
 passes a smoke check. On failure, the previous release continues to run and the
 failure is recorded in `install-<version>.log`.
 
+Mutable Studio state lives separately under
+`${DATA_DIR}/${UNSLOTH_HOME_PATH}/studio-state` and is linked into every
+release. This includes authentication, Studio and RAG databases, user datasets,
+runs, exports, and outputs, so credentials and application data survive both
+container recreation and Studio release changes. The first startup with this
+layout automatically adopts existing state from the active release.
+
 Exact-version mode uses the current Studio installer and then pins the Unsloth
 Core wheel. Upstream does not currently publish the whole Studio installer as a
 versioned artifact, so an old Core version may not always be compatible with the

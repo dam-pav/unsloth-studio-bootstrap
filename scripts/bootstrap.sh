@@ -4,6 +4,7 @@ set -Eeuo pipefail
 state=/home/unsloth
 releases="$state/releases"
 current="$state/current"
+persistent="$state/studio-state"
 requested="${UNSLOTH_VERSION:-latest}"
 uid="${UNSLOTH_UID:-1000}"
 gid="${UNSLOTH_GID:-1000}"
@@ -17,7 +18,7 @@ case "$requested" in
   *) echo "ERROR: UNSLOTH_VERSION must be latest, nightly, or an exact release" >&2; exit 2 ;;
 esac
 
-mkdir -p "$releases" /workspace/work /workspace/.cache /workspace/models
+mkdir -p "$releases" "$persistent" /workspace/work /workspace/.cache /workspace/models
 chown -R "$uid:$gid" "$state" /workspace/work /workspace/.cache
 
 installed_version=""
@@ -109,6 +110,49 @@ if [[ ! -x "$release/unsloth_studio/bin/unsloth" ]]; then
     chown "$uid:$gid" "$release/.installed-version"
   fi
 fi
+
+# Studio keeps mutable application data below UNSLOTH_STUDIO_HOME alongside its
+# runtime. Keep that data outside versioned releases so upgrades do not create
+# fresh databases (and, consequently, demand a new password). On the first run,
+# adopt data from the previously active release. Studio is not running yet, so
+# its SQLite databases are closed while they are moved.
+link_persistent_path() {
+  local relative="$1"
+  local shared="$persistent/$relative"
+  local previous=""
+  local installed="$release/$relative"
+
+  if [[ -L "$current" ]]; then
+    previous="$current/$relative"
+  fi
+
+  mkdir -p "$(dirname "$shared")" "$(dirname "$installed")"
+  if [[ ! -e "$shared" && ! -L "$shared" ]]; then
+    if [[ -n "$previous" && ( -e "$previous" || -L "$previous" ) ]]; then
+      mv "$previous" "$shared"
+    elif [[ -e "$installed" || -L "$installed" ]]; then
+      mv "$installed" "$shared"
+    fi
+  fi
+
+  if [[ -e "$installed" || -L "$installed" ]]; then
+    rm -rf -- "$installed"
+  fi
+  if [[ ! -e "$shared" && ! -L "$shared" ]]; then
+    case "$relative" in
+      studio.db|share/studio_install_id) : > "$shared" ;;
+      *) mkdir -p "$shared" ;;
+    esac
+  fi
+  ln -s "$shared" "$installed"
+}
+
+for relative in \
+  auth studio.db rag runs exports outputs assets/datasets share/studio_install_id
+do
+  link_persistent_path "$relative"
+done
+chown -R "$uid:$gid" "$persistent"
 
 if [[ "$release" != "$current" ]]; then
   ln -sfn "releases/$target" "$state/.current.new"
