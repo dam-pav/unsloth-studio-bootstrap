@@ -43,6 +43,9 @@ stage="$(mktemp -d /out/.build.XXXXXX)"
 chown "$unsloth_uid:$unsloth_gid" "$stage"
 trap 'rm -rf "$stage"' EXIT
 git clone --filter=blob:none "$repo" "$stage/source"
+# Mounted storage can assign the checkout to the Studio user. Trust only this
+# freshly cloned repository for root's Git calls, including those from CMake.
+git config --global --add safe.directory "$stage/source"
 if ! git -C "$stage/source" checkout "$ref"; then
   git -C "$stage/source" fetch --depth 1 origin "$ref"
   git -C "$stage/source" checkout FETCH_HEAD
