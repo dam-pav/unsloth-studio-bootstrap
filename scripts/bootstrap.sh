@@ -79,6 +79,7 @@ if [[ ! -x "$release/unsloth_studio/bin/unsloth" ]]; then
 
   if ! setpriv --reuid "$uid" --regid "$gid" --clear-groups env \
       HOME="$state" UNSLOTH_STUDIO_HOME="$release" REQUESTED_VERSION="$requested" \
+      UNSLOTH_SKIP_AUTOSTART=1 \
       UNSLOTH_SOURCE_REF="${source_ref:-}" \
       bash -c '
         set -Eeuo pipefail
@@ -109,6 +110,34 @@ if [[ ! -x "$release/unsloth_studio/bin/unsloth" ]]; then
     printf '%s\n' "$target" > "$release/.installed-version"
     chown "$uid:$gid" "$release/.installed-version"
   fi
+fi
+
+# A CLI executable and --version do not prove that Studio's backend dependencies
+# were installed. Check cached releases too, so an incomplete environment can
+# recover without deleting the release or its application data.
+runtime_log="$state/runtime-$target.log"
+if ! setpriv --reuid "$uid" --regid "$gid" --clear-groups env \
+    HOME="$state" UNSLOTH_STUDIO_HOME="$release" \
+    PATH="$release/unsloth_studio/bin:$state/.local/bin:$PATH" \
+    bash -c '
+      set -Eeuo pipefail
+      python="$UNSLOTH_STUDIO_HOME/unsloth_studio/bin/python"
+      if "$python" -c "import fastapi, uvicorn"; then
+        exit 0
+      fi
+      echo "Repairing missing Studio backend dependencies"
+      requirements="$("$python" -c '\''import importlib.resources; print(importlib.resources.files("studio") / "backend" / "requirements" / "studio.txt")'\'')"
+      test -f "$requirements"
+      if command -v uv >/dev/null 2>&1; then
+        uv pip install --python "$python" -r "$requirements"
+      else
+        "$python" -m pip install -r "$requirements"
+      fi
+      "$python" -c "import fastapi, uvicorn"
+    ' >"$runtime_log" 2>&1; then
+  echo "ERROR: Studio backend dependency check or repair failed; see $runtime_log" >&2
+  tail -n 50 "$runtime_log" >&2
+  exit 1
 fi
 
 # Studio keeps mutable application data below UNSLOTH_STUDIO_HOME alongside its
