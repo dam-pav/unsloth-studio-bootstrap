@@ -10,10 +10,12 @@ services:
       UNSLOTH_GID: ${UNSLOTH_GID:-1000}
     volumes:
       - ${DATA_DIR:?DATA_DIR is required}/${UNSLOTH_WORK_PATH:-work}:/persist/work
-      - ${DATA_DIR:?DATA_DIR is required}/${UNSLOTH_CACHE_PATH:-cache}:/persist/cache
-      - ${DATA_DIR:?DATA_DIR is required}/${UNSLOTH_HOME_PATH:-home}:/persist/home
-      - ${DATA_DIR:?DATA_DIR is required}/${UNSLOTH_LLAMA_PATH:-llama}:/persist/llama
-    command: ["/bin/sh", "-ec", "mkdir -p /persist/work /persist/cache /persist/home /persist/llama; chown -R $${UNSLOTH_UID}:$${UNSLOTH_GID} /persist/work /persist/cache /persist/home /persist/llama; chmod -R u+rwX,g+rwX,o-rwx /persist/work /persist/cache /persist/home /persist/llama"]
+      - ${DATA_DIR:?DATA_DIR is required}/${UNSLOTH_STUDIO_PATH:-studio-state}:/persist/studio
+      - ${DATA_DIR:?DATA_DIR is required}/${UNSLOTH_PROJECTS_PATH:-projects}:/persist/projects
+      - runtime-home:/persist/home
+      - runtime-cache:/persist/cache
+      - llama-builds:/persist/llama
+    command: ["/bin/sh", "-ec", "mkdir -p /persist/work /persist/studio /persist/projects /persist/cache /persist/home /persist/llama; chown -R $${UNSLOTH_UID}:$${UNSLOTH_GID} /persist/work /persist/studio /persist/projects /persist/cache /persist/home /persist/llama; chmod -R u+rwX,g+rwX,o-rwx /persist/work /persist/studio /persist/projects /persist/cache /persist/home /persist/llama"]
 
   llama-setup:
     image: ${LLAMA_SETUP_IMAGE:-ghcr.io/dam-pav/unsloth-studio-bootstrap-llama-setup:latest}
@@ -33,12 +35,13 @@ services:
       init:
         condition: service_completed_successfully
     volumes:
-      - ${DATA_DIR:?DATA_DIR is required}/${UNSLOTH_LLAMA_PATH:-llama}:/out
+      - llama-builds:/out
 
   unsloth:
     image: ${UNSLOTH_IMAGE:-unsloth-studio-bootstrap:local}
     labels:
       io.unsloth.studio.release-trigger: "2026.9.14"
+      io.unsloth.studio.storage-layout: "2"
     build:
       context: .
     restart: unless-stopped
@@ -50,6 +53,10 @@ services:
       TZ: ${TZ:-Etc/UTC}
       HOME: /home/unsloth
       UNSLOTH_STUDIO_HOME: /home/unsloth/current
+      UNSLOTH_STUDIO_PROJECTS_HOME: /workspace/projects
+      # Obsolete setting is read only to locate v1 data during migration.
+      UNSLOTH_LEGACY_HOME_PATH: ${UNSLOTH_HOME_PATH:-home}
+      UNSLOTH_LEGACY_WORK_PATH: ${UNSLOTH_WORK_PATH:-work}
       UNSLOTH_VERSION: ${UNSLOTH_VERSION:-latest}
       UNSLOTH_UPDATE_CHECK: ${UNSLOTH_UPDATE_CHECK:-1}
       UNSLOTH_AUTO_UPDATE: ${UNSLOTH_AUTO_UPDATE:-1}
@@ -59,9 +66,13 @@ services:
       LLAMA_SERVER_FLASH_ATTN: ${LLAMA_SERVER_FLASH_ATTN:-off}
       LLAMA_SERVER_FIT: ${LLAMA_SERVER_FIT:-off}
       HF_TOKEN: ${HF_TOKEN:-}
-      HF_HOME: /workspace/work/.cache/huggingface
+      HF_HOME: /workspace/studio/huggingface
       HF_HUB_CACHE: /workspace/models
-      TORCH_HOME: /workspace/models/.cache/torch
+      HF_XET_CACHE: /workspace/.cache/huggingface/xet
+      HF_ASSETS_CACHE: /workspace/.cache/huggingface/assets
+      HF_DATASETS_CACHE: /workspace/.cache/huggingface/datasets
+      XDG_CACHE_HOME: /workspace/.cache
+      TORCH_HOME: /workspace/.cache/torch
       NVIDIA_VISIBLE_DEVICES: ${UNSLOTH_GPU_DEVICES:-all}
       NVIDIA_DRIVER_CAPABILITIES: compute,utility
     depends_on:
@@ -71,10 +82,13 @@ services:
         condition: service_completed_successfully
     volumes:
       - ${DATA_DIR:?DATA_DIR is required}/${UNSLOTH_WORK_PATH:-work}:/workspace/work
-      - ${DATA_DIR:?DATA_DIR is required}/${UNSLOTH_CACHE_PATH:-cache}:/workspace/.cache
-      - ${DATA_DIR:?DATA_DIR is required}/${UNSLOTH_HOME_PATH:-home}:/home/unsloth
-      - ${DATA_DIR:?DATA_DIR is required}/${UNSLOTH_LLAMA_PATH:-llama}:/opt/llama-server:ro
+      - ${DATA_DIR:?DATA_DIR is required}/${UNSLOTH_STUDIO_PATH:-studio-state}:/workspace/studio
+      - ${DATA_DIR:?DATA_DIR is required}/${UNSLOTH_PROJECTS_PATH:-projects}:/workspace/projects
+      - runtime-cache:/workspace/.cache
+      - runtime-home:/home/unsloth
+      - llama-builds:/opt/llama-server:ro
       - ${MODELS_PATH:?MODELS_PATH is required}:/workspace/models
+      - ${DATA_DIR:?DATA_DIR is required}:/legacy/data:ro
     networks: [internal]
     healthcheck:
       test: ["CMD", "curl", "-fsS", "--max-time", "5", "http://127.0.0.1:8000/"]
@@ -101,3 +115,9 @@ services:
 networks:
   internal:
     driver: bridge
+
+# Rebuildable storage, excluded from DATA_DIR and backups. `down -v` resets it.
+volumes:
+  runtime-home:
+  runtime-cache:
+  llama-builds:

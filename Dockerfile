@@ -9,6 +9,7 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/*
 
 COPY scripts/bootstrap.sh /usr/local/bin/unsloth-bootstrap
+COPY scripts/migrate-storage.py /usr/local/bin/unsloth-migrate-storage
 RUN chmod 755 /usr/local/bin/unsloth-bootstrap
 
 EXPOSE 8000

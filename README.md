@@ -1,5 +1,18 @@
 # Unsloth Studio Bootstrap
 
+> [!CAUTION]
+> **BREAKING CHANGE — storage layout v2 (2026-10-04). Automatic data migration.**
+> This bootstrap version replaces `UNSLOTH_CACHE_PATH`, `UNSLOTH_HOME_PATH` and
+> `UNSLOTH_LLAMA_PATH` with `UNSLOTH_STUDIO_PATH` (default: `studio-state`) and
+> `UNSLOTH_PROJECTS_PATH` (default: `projects`). `UNSLOTH_WORK_PATH` and
+> `MODELS_PATH` remain unchanged. Installed software, caches and llama.cpp builds
+> now use disposable Docker volumes outside `DATA_DIR`.
+> **On the first startup, existing credentials, settings, assets and projects
+> are automatically copied from the old layout before Studio starts.** Old files
+> are retained. Keep any custom `UNSLOTH_HOME_PATH` value for this first upgrade.
+> Read [the migration instructions](docs/storage-layout-v2-migration.md) before deploying.
+> This is a deployment storage version, independent of `UNSLOTH_VERSION`.
+
 This repository provides a GPU-enabled, self-updating Unsloth Studio deployment
 for users who need newer Studio releases than the official GHCR image currently
 provides. That image severely lags behind upstream development, making recent
@@ -7,7 +20,7 @@ features and fixes unavailable to image-based deployments.
 
 To close that gap without rebuilding an entire image for every Studio release,
 this deployment separates the stable CUDA and operating-system dependencies
-from Studio itself. Studio is installed into persistent, versioned directories
+from Studio itself. Studio is installed into reusable, versioned directories
 and can update at container startup, while retaining a known working release for
 rollback.
 
@@ -112,12 +125,14 @@ other variables are optional and use the listed default when unset.
 
 | Variable | Required | Default | Role and impact |
 | --- | :---: | --- | --- |
-| `DATA_DIR` | ✓ | none | Host directory containing persistent work, cache, home, and llama.cpp data. |
+| `DATA_DIR` | ✓ | none | Host directory containing durable workspace files, Studio state and projects. |
 | `MODELS_PATH` | ✓ | none | Host directory mounted as the shared model store. |
 | `UNSLOTH_WORK_PATH` |  | `work` | Work subdirectory beneath `DATA_DIR`; changing it selects a different persistent workspace. |
-| `UNSLOTH_CACHE_PATH` |  | `cache` | Cache subdirectory beneath `DATA_DIR`. |
-| `UNSLOTH_HOME_PATH` |  | `home` | Home and versioned Studio release subdirectory beneath `DATA_DIR`. |
-| `UNSLOTH_LLAMA_PATH` |  | `llama` | Subdirectory beneath `DATA_DIR` used for cached custom llama.cpp builds. |
+| `UNSLOTH_STUDIO_PATH` |  | `studio-state` | Studio state subdirectory beneath `DATA_DIR`: credentials, settings, databases and user assets. |
+| `UNSLOTH_PROJECTS_PATH` |  | `projects` | Project workspace subdirectory beneath `DATA_DIR`. |
+| `UNSLOTH_CACHE_PATH` |  | `cache` (legacy) | **Obsolete / inactive.** Ignored; caches now use disposable Docker volumes. |
+| `UNSLOTH_HOME_PATH` |  | `home` (legacy) | **Obsolete / inactive for runtime storage.** Used only to locate v1 data during automatic migration; retain a custom value until the first upgrade completes. |
+| `UNSLOTH_LLAMA_PATH` |  | `llama` (legacy) | **Obsolete / inactive.** Ignored; custom llama.cpp builds now use a disposable Docker volume. |
 | `UNSLOTH_UID` |  | `1000` | UID that owns persistent files and runs Studio inside the container. |
 | `UNSLOTH_GID` |  | `1000` | GID that owns persistent files and runs Studio inside the container. |
 | `UNSLOTH_VERSION` |  | `latest` | Selects the stable release, an exact version, or `nightly`; see the release policy below. |
@@ -142,6 +157,43 @@ other variables are optional and use the listed default when unset.
 | `LLAMA_SETUP_IMAGE` |  | `ghcr.io/dam-pav/unsloth-studio-bootstrap-llama-setup:latest` | Helper image containing the custom llama.cpp build scripts. |
 | `UNSLOTH_WEB_IMAGE` |  | `ghcr.io/dam-pav/unsloth-studio-bootstrap-web:latest` | Nginx image containing the Studio reverse-proxy configuration. |
 | `UNSLOTH_HEALTH_START_PERIOD` |  | `10m` | Grace period before failed Studio health checks count against the container. |
+
+## Storage and backups
+
+The host layout is:
+
+```text
+DATA_DIR/
+  work/       # Workspace files (UNSLOTH_WORK_PATH)
+  studio-state/ # Authentication, settings, history and assets (UNSLOTH_STUDIO_PATH)
+  projects/   # Project workspaces (UNSLOTH_PROJECTS_PATH)
+MODELS_PATH/  # Shared downloaded model files, outside DATA_DIR
+```
+
+Studio state is mounted at `/workspace/studio` and linked into each installed
+release. It includes `auth`, `studio.db`, `rag`, `runs`, `exports`, `outputs`,
+`assets/datasets`, `share/studio_install_id`, `accounts`, `library`,
+`chat-originals`, `images`, `videos`, `audio`, `transcripts`, `security` and
+`mcp-oauth-tokens`. Hugging Face credentials use `studio-state/huggingface`; model
+downloads use `/workspace/models`. Uploaded and generated assets can make the
+Studio directory large; these are user data rather than disposable caches.
+
+Projects are mounted at `/workspace/projects`, with Studio explicitly configured
+to use that root. The old `/home/unsloth/studio-state` and default project paths
+remain aliases so saved references to those locations continue to work. Custom
+asset/model locations configured inside Studio still need their own durable
+mounts; files saved elsewhere in the container are not covered by this layout.
+
+Docker volumes `runtime-home`, `runtime-cache` and `llama-builds` contain installed
+releases, home tooling, caches and custom llama.cpp builds. They survive ordinary
+container recreation for faster startup, but are rebuildable and excluded from
+backups. `docker compose down -v` deletes them; the next startup reinstalls Studio
+and rebuilds custom llama.cpp. It leaves the host bind mounts intact. Pin
+`UNSLOTH_VERSION` if you need the same Core release after a runtime reset;
+`UNSLOTH_AUTO_UPDATE=0` only freezes an installation while it still exists.
+
+Back up `DATA_DIR` and any model files you need from `MODELS_PATH`. Stop Studio
+for a consistent filesystem backup of its SQLite databases and assets.
 
 ## Run locally or in WSL (NAT)
 
@@ -201,17 +253,17 @@ For the GitHub main branch:
 UNSLOTH_VERSION=nightly
 ```
 
-Installations live under `${DATA_DIR}/${UNSLOTH_HOME_PATH}/releases`. A new
+Installations live under `/home/unsloth/releases` in the disposable `runtime-home`
+Docker volume. A new
 release becomes `current` only after the installer completes and the launcher
 passes a smoke check. On failure, the previous release continues to run and the
 failure is recorded in `install-<version>.log`.
 
 Mutable Studio state lives separately under
-`${DATA_DIR}/${UNSLOTH_HOME_PATH}/studio-state` and is linked into every
-release. This includes authentication, Studio and RAG databases, user datasets,
-runs, exports, and outputs, so credentials and application data survive both
-container recreation and Studio release changes. The first startup with this
-layout automatically adopts existing state from the active release.
+`${DATA_DIR}/${UNSLOTH_STUDIO_PATH:-studio-state}` and is linked into every release.
+Credentials and application data survive container recreation, release changes
+and deletion of runtime volumes. Existing deployments are migrated automatically
+on the first startup; see the [migration instructions](docs/storage-layout-v2-migration.md).
 
 Exact-version mode uses the current Studio installer and then pins the Unsloth
 Core wheel. Upstream does not currently publish the whole Studio installer as a
@@ -350,6 +402,10 @@ docker compose build --pull unsloth
 docker compose up -d
 ```
 
-Back up `DATA_DIR` before removing old release directories. Do not expose Studio
+Back up `DATA_DIR` and required model files before storage maintenance. Do not expose Studio
 to an untrusted network without configuring authentication inside Studio or an
 authenticating reverse proxy.
+
+## Additional documentation
+
+- [Storage layout v1 to v2 migration](docs/storage-layout-v2-migration.md) — automatic migration, legacy settings, cleanup and troubleshooting.

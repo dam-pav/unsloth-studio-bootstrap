@@ -4,7 +4,7 @@ set -Eeuo pipefail
 state=/home/unsloth
 releases="$state/releases"
 current="$state/current"
-persistent="$state/studio-state"
+persistent=/workspace/studio
 requested="${UNSLOTH_VERSION:-latest}"
 uid="${UNSLOTH_UID:-1000}"
 gid="${UNSLOTH_GID:-1000}"
@@ -18,8 +18,30 @@ case "$requested" in
   *) echo "ERROR: UNSLOTH_VERSION must be latest, nightly, or an exact release" >&2; exit 2 ;;
 esac
 
-mkdir -p "$releases" "$persistent" /workspace/work /workspace/.cache /workspace/models
-chown -R "$uid:$gid" "$state" /workspace/work /workspace/.cache
+mkdir -p "$releases" "$persistent" /workspace/work /workspace/projects /workspace/.cache /workspace/models
+python3 /usr/local/bin/unsloth-migrate-storage \
+  --legacy-data /legacy/data --studio "$persistent" --projects /workspace/projects
+chown -R "$uid:$gid" "$state" "$persistent" /workspace/work /workspace/projects /workspace/.cache
+
+# Keep saved paths through the former shared-state location usable. The actual
+# data is mounted separately, so resetting runtime-home cannot erase it.
+if [[ -e "$state/studio-state" && ! -L "$state/studio-state" ]]; then
+  echo "ERROR: legacy Studio state found in runtime-home; migrate it to $persistent first" >&2
+  exit 1
+fi
+ln -sfn "$persistent" "$state/studio-state"
+
+# Preserve the old default project paths as aliases into the new project mount.
+mkdir -p "$state/Documents/Unsloth Studio"
+for relative in Projects Accounts; do
+  legacy="$state/Documents/Unsloth Studio/$relative"
+  if [[ -e "$legacy" && ! -L "$legacy" ]]; then
+    echo "ERROR: legacy projects found at $legacy; migrate them before starting" >&2
+    exit 1
+  fi
+done
+ln -sfn /workspace/projects "$state/Documents/Unsloth Studio/Projects"
+ln -sfn /workspace/projects/Accounts "$state/Documents/Unsloth Studio/Accounts"
 
 installed_version=""
 if [[ -L "$current" && -f "$current/.installed-version" ]]; then
@@ -141,7 +163,7 @@ if ! setpriv --reuid "$uid" --regid "$gid" --clear-groups env \
 fi
 
 # Studio keeps mutable application data below UNSLOTH_STUDIO_HOME alongside its
-# runtime. Keep that data outside versioned releases so upgrades do not create
+# runtime. Keep that data in its own host mount so upgrades do not create
 # fresh databases (and, consequently, demand a new password). On the first run,
 # adopt data from the previously active release. Studio is not running yet, so
 # its SQLite databases are closed while they are moved.
@@ -157,9 +179,12 @@ link_persistent_path() {
 
   mkdir -p "$(dirname "$shared")" "$(dirname "$installed")"
   if [[ ! -e "$shared" && ! -L "$shared" ]]; then
-    if [[ -n "$previous" && ( -e "$previous" || -L "$previous" ) ]]; then
+    # Existing release links already point at the shared mount. If that mount
+    # is empty (a fresh deployment or a changed STUDIO_PATH), moving a dangling
+    # link into its own target would create a self-referential symlink.
+    if [[ -n "$previous" && -e "$previous" && ! -L "$previous" ]]; then
       mv "$previous" "$shared"
-    elif [[ -e "$installed" || -L "$installed" ]]; then
+    elif [[ -e "$installed" && ! -L "$installed" ]]; then
       mv "$installed" "$shared"
     fi
   fi
@@ -177,7 +202,8 @@ link_persistent_path() {
 }
 
 for relative in \
-  auth studio.db rag runs exports outputs assets/datasets share/studio_install_id
+  auth studio.db rag runs exports outputs assets/datasets share/studio_install_id \
+  accounts library chat-originals images videos audio transcripts security mcp-oauth-tokens
 do
   link_persistent_path "$relative"
 done
