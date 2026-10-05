@@ -10,6 +10,7 @@ RUN apt-get update \
 
 COPY scripts/bootstrap.sh /usr/local/bin/unsloth-bootstrap
 COPY scripts/migrate-storage.py /usr/local/bin/unsloth-migrate-storage
+COPY scripts/sqlite-policy/ /usr/local/lib/unsloth-sqlite-policy/
 RUN chmod 755 /usr/local/bin/unsloth-bootstrap
 
 EXPOSE 8000

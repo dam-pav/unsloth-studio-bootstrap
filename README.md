@@ -138,6 +138,7 @@ other variables are optional and use the listed default when unset.
 | `UNSLOTH_VERSION` |  | `latest` | Selects the stable release, an exact version, or `nightly`; see the release policy below. |
 | `UNSLOTH_UPDATE_CHECK` |  | `1` | Set to `0` to skip resolving a newer stable release when an installation already exists. |
 | `UNSLOTH_AUTO_UPDATE` |  | `1` | Set to `0` to keep running the installed release when a newer target is found. |
+| `UNSLOTH_SQLITE_MODE` |  | `wal` | Keeps upstream SQLite behavior by default. Opt-in `rollback-journal` or `wal-exclusive` applies to Studio state databases. Network storage with WAL produces a prominent startup warning; see [SQLite modes](docs/sqlite-modes.md). |
 | `LLAMA_CPP_MODE` |  | `bundled` | Uses Unsloth's managed llama.cpp; `custom` enables the build and settings below. |
 | `LLAMA_CPP_REPO` |  | `https://github.com/unslothai/llama.cpp.git` | Git repository cloned for a custom build. |
 | `LLAMA_CPP_REF` |  | `b10079-mix-fb3d4ca` | Branch, tag, or commit built in custom mode; changing the repository requires a ref that exists there, and changing either value invalidates the build cache. |
@@ -409,3 +410,5 @@ authenticating reverse proxy.
 ## Additional documentation
 
 - [Storage layout v1 to v2 migration](docs/storage-layout-v2-migration.md) — automatic migration, legacy settings, cleanup and troubleshooting.
+- [Investigating SQLite stalls on NFS](docs/nfs-sqlite-investigation.md) — source findings, disposable journal-mode comparisons and live tracing.
+- [SQLite modes](docs/sqlite-modes.md) — isolated opt-in database policies, concurrency limits and changing modes.
