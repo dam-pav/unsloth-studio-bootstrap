@@ -9,22 +9,45 @@ import secrets
 import statistics
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 import uuid
 from pathlib import Path
+
+
+class NoRedirect(urllib.request.HTTPRedirectHandler):
+    """Keep credentials on the explicitly selected test server."""
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        return None
+
+
+def http_base(value):
+    """Validate the origin before opening sessions or sending credentials."""
+    try:
+        parts = urllib.parse.urlsplit(value)
+        _ = parts.port
+    except ValueError as error:
+        raise argparse.ArgumentTypeError("base has an invalid host or port") from error
+    if (parts.scheme not in ("http", "https") or not parts.hostname
+            or parts.username is not None or parts.password is not None
+            or parts.query or parts.fragment):
+        raise argparse.ArgumentTypeError("base must be an HTTP/HTTPS URL without credentials, query or fragment")
+    return value.rstrip("/")
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--allow-test-data", action="store_true", required=True,
                         help="authorize creating test accounts and chat history")
-    parser.add_argument("--base", default="http://127.0.0.1:8000")
+    parser.add_argument("--base", type=http_base, default="http://127.0.0.1:8000")
     parser.add_argument("--session", type=Path, required=True)
     parser.add_argument("--bootstrap-password", type=Path,
                         default=Path("/workspace/studio/auth/.bootstrap_password"))
     parser.add_argument("--verify-only", action="store_true")
     args = parser.parse_args()
     timings = []
+    opener = urllib.request.build_opener(NoRedirect())
 
     def save_session(session):
         descriptor = os.open(args.session, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
@@ -40,7 +63,7 @@ def main():
         req = urllib.request.Request(args.base + path, data=data, headers=headers, method=method)
         started = time.monotonic()
         try:
-            with urllib.request.urlopen(req, timeout=30) as response:
+            with opener.open(req, timeout=30) as response:
                 status, body = response.status, response.read()
         except urllib.error.HTTPError as error:
             status, body = error.code, b""

@@ -5,7 +5,7 @@ import importlib.util
 import itertools
 import os
 import sqlite3
-import subprocess
+import subprocess  # nosec B404 - Process isolation is the behavior under test.
 import sys
 import tempfile
 import unittest
@@ -106,12 +106,14 @@ class SQLitePolicyTests(unittest.TestCase):
         for name, value in itertools.product(("journal_mode", '"journal_mode"', "main.journal_mode"), ("WAL", "'wal'", "MEMORY", "OFF")):
             for spacing in (" ", "\n\t"):
                 sql = f"pragma{spacing}{name}{spacing}={spacing}{value};"
-                conn.execute(sql)
-                conn.cursor().execute(sql)
+                # Fixed cases deliberately vary SQL syntax; PRAGMAs cannot bind parameters.
+                conn.execute(sql)  # nosec B608; nosemgrep
+                conn.cursor().execute(sql)  # nosec B608; nosemgrep
                 conn.executescript(sql)
                 self.assertEqual(conn.execute("PRAGMA journal_mode").fetchone()[0], "delete")
         for value in ("OFF", "NORMAL", "0", "1"):
-            conn.executescript(f"PRAGMA synchronous={value};")
+            # Only the fixed synchronization values above are interpolated.
+            conn.executescript(f"PRAGMA synchronous={value};")  # nosec B608; nosemgrep
             self.assertEqual(conn.execute("PRAGMA synchronous").fetchone()[0], 2)
         self.assertEqual(conn.execute("SELECT 'PRAGMA journal_mode=WAL'").fetchone()[0], "PRAGMA journal_mode=WAL")
         conn.close()
@@ -202,11 +204,13 @@ class SQLitePolicyTests(unittest.TestCase):
         conn.execute("CREATE TABLE data (id INTEGER)")
         conn.commit()
         code = "import sqlite3,sys; c=sqlite3.connect(sys.argv[1],timeout=0.1); c.execute('SELECT count(*) FROM data').fetchone(); c.close()"
-        result = subprocess.run([sys.executable, "-c", code, str(database)], capture_output=True, text=True, timeout=10)
+        # Controlled executable, fixture paths and code; separate argv entries, never a shell.
+        result = subprocess.run([sys.executable, "-c", code, str(database)], shell=False, capture_output=True, text=True, timeout=10)  # nosec B603; nosemgrep
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("locked", result.stderr)
         conn.close()
-        result = subprocess.run([sys.executable, "-c", code, str(database)], capture_output=True, text=True, timeout=10)
+        # Controlled executable, fixture paths and code; separate argv entries, never a shell.
+        result = subprocess.run([sys.executable, "-c", code, str(database)], shell=False, capture_output=True, text=True, timeout=10)  # nosec B603; nosemgrep
         self.assertEqual(result.returncode, 0, result.stderr)
 
     def test_delete_allows_concurrent_writes_from_separate_processes(self):
@@ -227,7 +231,8 @@ for value in range(15):
     conn.execute('SELECT count(*) FROM data').fetchone()
 conn.close()
 """
-        processes = [subprocess.Popen([sys.executable, "-c", code, str(POLICY_DIRECTORY), str(self.root), str(database), str(worker)], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True) for worker in range(3)]
+        # Controlled executable, fixture paths and code; separate argv entries, never a shell.
+        processes = [subprocess.Popen([sys.executable, "-c", code, str(POLICY_DIRECTORY), str(self.root), str(database), str(worker)], shell=False, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True) for worker in range(3)]  # nosec B603; nosemgrep
         try:
             for process in processes:
                 _, error = process.communicate(timeout=20)
@@ -256,7 +261,8 @@ class SQLiteLauncherTests(unittest.TestCase):
             cli = Path(folder) / "cli.py"
             cli.write_text("import sys\nfrom unsloth_sqlite_policy import require_active\nrequire_active('rollback-journal')\nassert sys.argv[1:] == ['studio', '-p', '8000']\nprint('policy active')\n")
             env = dict(os.environ, UNSLOTH_SQLITE_MODE="rollback-journal", PYTHONPATH=str(POLICY_DIRECTORY))
-            result = subprocess.run([sys.executable, str(POLICY_DIRECTORY / "launch.py"), str(cli), "studio", "-p", "8000"], env=env, capture_output=True, text=True, timeout=15)
+            # Controlled executable, fixture paths and code; separate argv entries, never a shell.
+            result = subprocess.run([sys.executable, str(POLICY_DIRECTORY / "launch.py"), str(cli), "studio", "-p", "8000"], env=env, shell=False, capture_output=True, text=True, timeout=15)  # nosec B603; nosemgrep
             self.assertEqual(result.returncode, 0, result.stderr)
             self.assertIn("policy active", result.stdout)
 
@@ -267,7 +273,8 @@ class SQLiteLauncherTests(unittest.TestCase):
             cli.write_text(f"from pathlib import Path\nPath({str(marker)!r}).touch()\n")
             env = dict(os.environ, UNSLOTH_SQLITE_MODE="rollback-journal")
             env.pop("PYTHONPATH", None)
-            result = subprocess.run([sys.executable, "-S", str(POLICY_DIRECTORY / "launch.py"), str(cli)], env=env, capture_output=True, text=True, timeout=15)
+            # Controlled executable, fixture paths and code; separate argv entries, never a shell.
+            result = subprocess.run([sys.executable, "-S", str(POLICY_DIRECTORY / "launch.py"), str(cli)], env=env, shell=False, capture_output=True, text=True, timeout=15)  # nosec B603; nosemgrep
             self.assertNotEqual(result.returncode, 0)
             self.assertIn("policy did not load", result.stderr)
             self.assertFalse(marker.exists())
@@ -275,7 +282,8 @@ class SQLiteLauncherTests(unittest.TestCase):
     def test_invalid_mode_fails_before_bootstrap_side_effects(self):
         for mode in ("typo", "delete", "journal"):
             with self.subTest(mode=mode):
-                result = subprocess.run(["bash", str(POLICY_DIRECTORY.parent / "bootstrap.sh")], env=dict(os.environ, UNSLOTH_SQLITE_MODE=mode), capture_output=True, text=True, timeout=15)
+                # Controlled executable, fixture paths and code; separate argv entries, never a shell.
+                result = subprocess.run(["bash", str(POLICY_DIRECTORY.parent / "bootstrap.sh")], env=dict(os.environ, UNSLOTH_SQLITE_MODE=mode), shell=False, capture_output=True, text=True, timeout=15)  # nosec B603; nosemgrep
                 self.assertEqual(result.returncode, 2)
                 self.assertIn("UNSLOTH_SQLITE_MODE must be", result.stderr)
                 self.assertEqual(result.stdout, "")

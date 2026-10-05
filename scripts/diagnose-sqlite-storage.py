@@ -14,6 +14,7 @@ from pathlib import Path
 
 
 def probe(root: Path, mode: str, iterations: int, workers: int, vfs: str) -> bool:
+    journal_statement = {"WAL": "PRAGMA journal_mode=WAL", "DELETE": "PRAGMA journal_mode=DELETE"}[mode]
     print(f"\nroot={root} journal={mode} workers={workers} vfs={vfs}", flush=True)
     samples = defaultdict(list)
     errors = []
@@ -40,7 +41,7 @@ def probe(root: Path, mode: str, iterations: int, workers: int, vfs: str) -> boo
         print(f"fixture={database}", flush=True)
         with contextlib.closing(connect()) as conn:
             actual = measured(
-                "initial journal", lambda: conn.execute(f"PRAGMA journal_mode={mode}").fetchone()[0]
+                "initial journal", lambda: conn.execute(journal_statement).fetchone()[0]
             )
             if actual.lower() != mode.lower():
                 print(f"Requested {mode}, got {actual}; skipping this mode.", flush=True)
@@ -66,7 +67,7 @@ def probe(root: Path, mode: str, iterations: int, workers: int, vfs: str) -> boo
                     conn.execute("PRAGMA synchronous=FULL")
                     measured(
                         "journal on connect",
-                        lambda: conn.execute(f"PRAGMA journal_mode={mode}").fetchone(),
+                        lambda: conn.execute(journal_statement).fetchone(),
                     )
                     measured("stat", database.stat)
                     measured("schema", lambda: conn.execute("PRAGMA schema_version").fetchone())
