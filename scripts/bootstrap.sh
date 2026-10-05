@@ -8,6 +8,13 @@ persistent=/workspace/studio
 requested="${UNSLOTH_VERSION:-latest}"
 uid="${UNSLOTH_UID:-1000}"
 gid="${UNSLOTH_GID:-1000}"
+sqlite_mode="${UNSLOTH_SQLITE_MODE:-wal}"
+sqlite_mode="${sqlite_mode,,}"
+
+case "$sqlite_mode" in
+  wal|rollback-journal|wal-exclusive) ;;
+  *) echo "ERROR: UNSLOTH_SQLITE_MODE must be wal, rollback-journal, or wal-exclusive" >&2; exit 2 ;;
+esac
 
 case "${LLAMA_CPP_MODE:-bundled}" in
   bundled|custom) ;;
@@ -16,6 +23,29 @@ esac
 case "$requested" in
   latest|nightly|[0-9]*) ;;
   *) echo "ERROR: UNSLOTH_VERSION must be latest, nightly, or an exact release" >&2; exit 2 ;;
+esac
+
+# Inspect the real database mount: DATA_DIR may contain mounts of different types.
+# Detection is advisory and must never change the selected mode or prevent boot.
+filesystem="$(findmnt -n -o FSTYPE -T "$persistent" 2>/dev/null)" || filesystem=unknown
+filesystem="${filesystem##*$'\n'}" # Use the topmost mount if findmnt lists stacked mounts.
+filesystem="${filesystem:-unknown}"
+printf 'Studio state filesystem: %s (%s); configured SQLite mode: %s\n' "$filesystem" "$persistent" "$sqlite_mode"
+case "$filesystem" in
+  nfs|nfs4|cifs|smb3|smbfs|sshfs|fuse.sshfs|ceph|fuse.ceph|glusterfs|fuse.glusterfs|lustre|afs|coda|davfs|davfs2|fuse.davfs|fuse.rclone|fuse.smbnetfs)
+    if [[ "$sqlite_mode" == wal ]]; then
+      cat >&2 <<EOF
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!!! WARNING: NETWORK STORAGE WITH SQLITE WAL — SEVERE LATENCY RISK             !!!
+!!! Studio state is on $filesystem: $persistent
+!!! WAL on network storage can cause MINUTES-LONG STALLS and request timeouts.
+!!! STRONGLY RECOMMENDED: set UNSLOTH_SQLITE_MODE=rollback-journal (rollback journaling).
+!!! Recreate the Studio container to apply the change. Mode remains: $sqlite_mode
+!!! See docs/sqlite-modes.md for configuration and concurrency details.
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+EOF
+    fi
+    ;;
 esac
 
 mkdir -p "$releases" "$persistent" /workspace/work /workspace/projects /workspace/.cache /workspace/models
@@ -225,5 +255,17 @@ if [[ "${LLAMA_CPP_MODE:-bundled}" == custom ]]; then
 fi
 
 cd /workspace/work
+if [[ "$sqlite_mode" != wal ]]; then
+  export UNSLOTH_SQLITE_MODE="$sqlite_mode"
+  export PYTHONPATH="/usr/local/lib/unsloth-sqlite-policy${PYTHONPATH:+:$PYTHONPATH}"
+  if [[ "$sqlite_mode" == rollback-journal ]]; then
+    echo "Studio SQLite mode: $sqlite_mode (rollback journaling / SQLite DELETE; persistent Studio databases only)"
+  else
+    echo "Studio SQLite mode: $sqlite_mode (persistent Studio databases only)"
+  fi
+  exec setpriv --reuid "$uid" --regid "$gid" --clear-groups \
+    "$current/unsloth_studio/bin/python" /usr/local/lib/unsloth-sqlite-policy/launch.py \
+    "$current/unsloth_studio/bin/unsloth" studio -H 0.0.0.0 -p 8000
+fi
 exec setpriv --reuid "$uid" --regid "$gid" --clear-groups \
   "$current/unsloth_studio/bin/unsloth" studio -H 0.0.0.0 -p 8000

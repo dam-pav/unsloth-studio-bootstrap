@@ -4,3 +4,4 @@
 README.md
 docker-compose*.yml
 env.stack.env
+**/__pycache__

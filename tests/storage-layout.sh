@@ -18,6 +18,11 @@ cat > "$fixture/bin/chown" <<'SH'
 #!/usr/bin/env bash
 exit 0
 SH
+cat > "$fixture/bin/findmnt" <<'SH'
+#!/usr/bin/env bash
+[[ "${TEST_FILESYSTEM:-ext4}" != unavailable ]] || exit 1
+printf '%s\n' "${TEST_FILESYSTEM:-ext4}"
+SH
 cat > "$fixture/bin/setpriv" <<'SH'
 #!/usr/bin/env bash
 set -Eeuo pipefail
@@ -35,12 +40,14 @@ if [[ "$install" == 1 ]]; then
   printf 'installer seed\n' > "$studio/auth/credential"
   printf '#!/usr/bin/env bash\nexit 0\n' > "$studio/unsloth_studio/bin/unsloth"
   chmod +x "$studio/unsloth_studio/bin/unsloth"
+else
+  printf '%s\n' "$@" > "$LAUNCH_TRACE"
 fi
 SH
 chmod +x "$fixture/bin/"*
 
 launch() {
-  PATH="$fixture/bin:$PATH" UNSLOTH_VERSION="$1" LLAMA_CPP_MODE=bundled \
+  PATH="$fixture/bin:$PATH" LAUNCH_TRACE="$fixture/last-launch" UNSLOTH_VERSION="$1" LLAMA_CPP_MODE=bundled \
     bash "$fixture/bootstrap.sh"
 }
 
@@ -98,3 +105,30 @@ launch 4
 [[ "$(cat "$fixture/workspace/studio/images/image")" == 'legacy image' ]]
 
 printf 'Storage layout: restart, upgrade, fallback, runtime reset, fresh state and adoption passed.\n'
+
+# Exercise the actual bootstrap's advisory detector and launch selection together.
+expected_data="$(find "$fixture/workspace" -type f -exec sha256sum {} + | sort)"
+for filesystem in nfs nfs4 cifs smb3 fuse.sshfs ceph fuse.glusterfs lustre fuse.rclone; do
+  TEST_FILESYSTEM="$filesystem" UNSLOTH_SQLITE_MODE=wal launch 4 > "$fixture/network.log" 2>&1
+  rg -q 'WARNING: NETWORK STORAGE WITH SQLITE WAL' "$fixture/network.log"
+  rg -q 'STRONGLY RECOMMENDED: set UNSLOTH_SQLITE_MODE=rollback-journal' "$fixture/network.log"
+  rg -q 'Mode remains: wal' "$fixture/network.log"
+  rg -q '/unsloth_studio/bin/unsloth$' "$fixture/last-launch"
+  ! rg -q '/launch.py$' "$fixture/last-launch"
+done
+TEST_FILESYSTEM=$'autofs\nnfs4' UNSLOTH_SQLITE_MODE=WAL launch 4 > "$fixture/network.log" 2>&1
+rg -q 'WARNING: NETWORK STORAGE WITH SQLITE WAL' "$fixture/network.log"
+for filesystem in ext4 btrfs xfs overlay fuse.cryptfs virtiofs unavailable; do
+  TEST_FILESYSTEM="$filesystem" UNSLOTH_SQLITE_MODE=wal launch 4 > "$fixture/local.log" 2>&1
+  ! rg -q 'WARNING: NETWORK STORAGE' "$fixture/local.log"
+  ! rg -q '/launch.py$' "$fixture/last-launch"
+done
+for mode in ROLLBACK-JOURNAL wal-exclusive; do
+  TEST_FILESYSTEM=nfs4 UNSLOTH_SQLITE_MODE="$mode" launch 4 > "$fixture/alternative.log" 2>&1
+  ! rg -q 'WARNING: NETWORK STORAGE' "$fixture/alternative.log"
+  rg -q '/launch.py$' "$fixture/last-launch"
+done
+TEST_FILESYSTEM=unavailable UNSLOTH_SQLITE_MODE=wal launch 4 > "$fixture/local.log" 2>&1
+rg -q 'Studio state filesystem: unknown' "$fixture/local.log"
+[[ "$(find "$fixture/workspace" -type f -exec sha256sum {} + | sort)" == "$expected_data" ]]
+printf 'Network storage: warnings, advisory failures, unchanged WAL launch and alternative modes passed.\n'
