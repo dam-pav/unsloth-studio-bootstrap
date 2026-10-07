@@ -12,10 +12,11 @@ services:
       - ${DATA_DIR:?DATA_DIR is required}/${UNSLOTH_WORK_PATH:-work}:/persist/work
       - ${DATA_DIR:?DATA_DIR is required}/${UNSLOTH_STUDIO_PATH:-studio-state}:/persist/studio
       - ${DATA_DIR:?DATA_DIR is required}/${UNSLOTH_PROJECTS_PATH:-projects}:/persist/projects
+      - ${MODELS_PATH:?MODELS_PATH is required}:/persist/models
       - runtime-home:/persist/home
       - runtime-cache:/persist/cache
       - llama-builds:/persist/llama
-    command: ["/bin/sh", "-ec", "mkdir -p /persist/work /persist/studio /persist/projects /persist/cache /persist/home /persist/llama; chown -R $${UNSLOTH_UID}:$${UNSLOTH_GID} /persist/work /persist/studio /persist/projects /persist/cache /persist/home /persist/llama; chmod -R u+rwX,g+rwX,o-rwx /persist/work /persist/studio /persist/projects /persist/cache /persist/home /persist/llama"]
+    command: ["/bin/sh", "-ec", "mkdir -p /persist/work /persist/studio /persist/projects /persist/cache /persist/home /persist/llama /persist/models; chown -R $${UNSLOTH_UID}:$${UNSLOTH_GID} /persist/work /persist/studio /persist/projects /persist/cache /persist/home /persist/llama /persist/models; chmod -R u+rwX,g+rwX,o-rwx /persist/work /persist/studio /persist/projects /persist/cache /persist/home /persist/llama /persist/models"]
 
   llama-setup:
     image: ${LLAMA_SETUP_IMAGE:-ghcr.io/dam-pav/unsloth-studio-bootstrap-llama-setup:latest}

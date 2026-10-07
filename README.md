@@ -126,7 +126,7 @@ other variables are optional and use the listed default when unset.
 | Variable | Required | Default | Role and impact |
 | --- | :---: | --- | --- |
 | `DATA_DIR` | ✓ | none | Host directory containing durable workspace files, Studio state and projects. |
-| `MODELS_PATH` | ✓ | none | Host directory mounted as the shared model store. |
+| `MODELS_PATH` | ✓ | none | Host directory mounted as the shared model store. Init recursively assigns its contents to `UNSLOTH_UID:UNSLOTH_GID` and grants owner/group write access. |
 | `UNSLOTH_WORK_PATH` |  | `work` | Work subdirectory beneath `DATA_DIR`; changing it selects a different persistent workspace. |
 | `UNSLOTH_STUDIO_PATH` |  | `studio-state` | Studio state subdirectory beneath `DATA_DIR`: credentials, settings, databases and user assets. |
 | `UNSLOTH_PROJECTS_PATH` |  | `projects` | Project workspace subdirectory beneath `DATA_DIR`. |
