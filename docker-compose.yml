@@ -41,7 +41,7 @@ services:
   unsloth:
     image: ${UNSLOTH_IMAGE:-unsloth-studio-bootstrap:local}
     labels:
-      io.unsloth.studio.release-trigger: "2026.10.2"
+      io.unsloth.studio.release-trigger: "2026.10.3"
       io.unsloth.studio.storage-layout: "2"
     build:
       context: .
